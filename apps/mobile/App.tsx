@@ -27,6 +27,7 @@ type PreviewWorkout = {
   intensity: string;
 };
 type PlanPage = 'view' | 'create';
+type CompletionStatus = 'completed' | 'shortened' | 'skipped' | 'replaced';
 type BootstrapUserResponse = {
   data: {
     id: number;
@@ -37,6 +38,12 @@ type TrainingPlanResponse = {
 };
 type TrainingPlansResponse = {
   data: SavedTrainingPlan[];
+};
+type ActivityLogResponse = {
+  data: {
+    id: number;
+    completion_status: CompletionStatus;
+  };
 };
 type SavedTrainingPlan = {
   id: number;
@@ -104,6 +111,12 @@ function PlannerScreen() {
   const [isLoadingSavedPlan, setIsLoadingSavedPlan] = useState(false);
   const [loadMessage, setLoadMessage] = useState<string | null>(null);
   const [activePage, setActivePage] = useState<PlanPage>('view');
+  const [selectedWorkoutId, setSelectedWorkoutId] = useState<number | null>(null);
+  const [logDistanceKm, setLogDistanceKm] = useState('');
+  const [logEffortRpe, setLogEffortRpe] = useState('');
+  const [completionStatus, setCompletionStatus] = useState<CompletionStatus>('completed');
+  const [isLoggingRun, setIsLoggingRun] = useState(false);
+  const [logMessage, setLogMessage] = useState<string | null>(null);
 
   const preview = useMemo(
     () => buildPreview(raceDistance, Number(weeklyKm) || 0, selectedDays, longRunDay),
@@ -114,6 +127,27 @@ function PlannerScreen() {
     loadLatestPlan({showMessage: false});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!savedPlan) {
+      setSelectedWorkoutId(null);
+
+      return;
+    }
+
+    const currentSelectionStillExists = savedPlan.workouts.some(
+      workout => workout.id === selectedWorkoutId,
+    );
+
+    if (currentSelectionStillExists) {
+      return;
+    }
+
+    const nextPlannedWorkout =
+      savedPlan.workouts.find(workout => workout.status === 'planned') ?? savedPlan.workouts[0];
+
+    setSelectedWorkoutId(nextPlannedWorkout?.id ?? null);
+  }, [savedPlan, selectedWorkoutId]);
 
   function toggleDay(day: number) {
     setSelectedDays(current => {
@@ -213,6 +247,45 @@ function PlannerScreen() {
       }
     } finally {
       setIsLoadingSavedPlan(false);
+    }
+  }
+
+  async function submitQuickLog() {
+    if (!localUserId || !savedPlan || !selectedWorkoutId) {
+      setLogMessage('Select a saved workout before logging.');
+
+      return;
+    }
+
+    setIsLoggingRun(true);
+    setLogMessage(null);
+
+    try {
+      const log = await requestJson<ActivityLogResponse>('/activity-logs', {
+        method: 'POST',
+        body: JSON.stringify({
+          user_id: localUserId,
+          workout_id: selectedWorkoutId,
+          started_at: new Date().toISOString(),
+          distance_km: logDistanceKm ? Number(logDistanceKm) : null,
+          effort_rpe: logEffortRpe ? Number(logEffortRpe) : null,
+          completion_status: completionStatus,
+        }),
+      });
+      const refreshedPlan = await requestJson<TrainingPlanResponse>(
+        `/training-plans/${savedPlan.id}?user_id=${localUserId}`,
+        {method: 'GET'},
+      );
+
+      setSavedPlan(refreshedPlan.data);
+      setLogDistanceKm('');
+      setLogEffortRpe('');
+      setCompletionStatus('completed');
+      setLogMessage(`Logged ${log.data.completion_status} run.`);
+    } catch (error) {
+      setLogMessage(error instanceof Error ? error.message : 'Could not log the run.');
+    } finally {
+      setIsLoggingRun(false);
     }
   }
 
@@ -401,16 +474,76 @@ function PlannerScreen() {
           {savedPlan ? (
             <View style={styles.logPanel}>
               <Text style={styles.sectionTitle}>Quick log</Text>
+              {selectedWorkoutId ? (
+                <Text style={styles.subtle}>
+                  {formatSelectedWorkoutLabel(savedPlan, selectedWorkoutId)}
+                </Text>
+              ) : null}
               <View style={styles.fieldRow}>
                 <View style={styles.field}>
                   <Text style={styles.label}>Distance</Text>
-                  <TextInput value="" placeholder="km" style={styles.input} keyboardType="decimal-pad" />
+                  <TextInput
+                    value={logDistanceKm}
+                    onChangeText={setLogDistanceKm}
+                    placeholder="km"
+                    style={styles.input}
+                    keyboardType="decimal-pad"
+                  />
                 </View>
                 <View style={styles.field}>
                   <Text style={styles.label}>Effort</Text>
-                  <TextInput value="" placeholder="RPE" style={styles.input} keyboardType="number-pad" />
+                  <TextInput
+                    value={logEffortRpe}
+                    onChangeText={setLogEffortRpe}
+                    placeholder="RPE"
+                    style={styles.input}
+                    keyboardType="number-pad"
+                  />
                 </View>
               </View>
+              <View style={styles.statusControl}>
+                {(['completed', 'shortened', 'skipped', 'replaced'] as CompletionStatus[]).map(
+                  status => (
+                    <Pressable
+                      key={status}
+                      accessibilityRole="button"
+                      accessibilityState={{selected: completionStatus === status}}
+                      onPress={() => setCompletionStatus(status)}
+                      style={[
+                        styles.statusButton,
+                        completionStatus === status && styles.statusButtonSelected,
+                      ]}>
+                      <Text
+                        style={[
+                          styles.statusButtonText,
+                          completionStatus === status && styles.statusButtonTextSelected,
+                        ]}>
+                        {formatWorkoutType(status)}
+                      </Text>
+                    </Pressable>
+                  ),
+                )}
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                disabled={isLoggingRun || !selectedWorkoutId}
+                onPress={submitQuickLog}
+                style={[styles.primaryButton, isLoggingRun && styles.primaryButtonDisabled]}>
+                <Text style={styles.primaryButtonText}>
+                  {isLoggingRun ? 'Logging...' : 'Log selected workout'}
+                </Text>
+              </Pressable>
+              {logMessage ? (
+                <Text
+                  style={[
+                    styles.saveMessage,
+                    logMessage.startsWith('Logged')
+                      ? styles.saveMessageSuccess
+                      : styles.saveMessageError,
+                  ]}>
+                  {logMessage}
+                </Text>
+              ) : null}
             </View>
           ) : (
             <View style={styles.section}>
@@ -442,7 +575,12 @@ function PlannerScreen() {
           </Pressable>
 
           {savedPlan ? (
-            <SavedPlanSection plan={savedPlan} userId={localUserId} />
+            <SavedPlanSection
+              plan={savedPlan}
+              userId={localUserId}
+              selectedWorkoutId={selectedWorkoutId}
+              onSelectWorkout={setSelectedWorkoutId}
+            />
           ) : null}
         </>
       )}
@@ -450,7 +588,17 @@ function PlannerScreen() {
   );
 }
 
-function SavedPlanSection({plan, userId}: {plan: SavedTrainingPlan; userId: number | null}) {
+function SavedPlanSection({
+  plan,
+  userId,
+  selectedWorkoutId,
+  onSelectWorkout,
+}: {
+  plan: SavedTrainingPlan;
+  userId: number | null;
+  selectedWorkoutId: number | null;
+  onSelectWorkout: (workoutId: number) => void;
+}) {
   const upcomingWorkouts = plan.workouts.slice(0, 12);
 
   return (
@@ -475,7 +623,15 @@ function SavedPlanSection({plan, userId}: {plan: SavedTrainingPlan; userId: numb
 
       <View style={styles.workoutList}>
         {upcomingWorkouts.map(workout => (
-          <View key={workout.id} style={styles.savedWorkoutRow}>
+          <Pressable
+            key={workout.id}
+            accessibilityRole="button"
+            accessibilityState={{selected: selectedWorkoutId === workout.id}}
+            onPress={() => onSelectWorkout(workout.id)}
+            style={[
+              styles.savedWorkoutRow,
+              selectedWorkoutId === workout.id && styles.savedWorkoutRowSelected,
+            ]}>
             <View style={styles.savedWorkoutDate}>
               <Text style={styles.savedWorkoutMonth}>{formatMonth(workout.scheduled_on)}</Text>
               <Text style={styles.savedWorkoutDay}>{formatDay(workout.scheduled_on)}</Text>
@@ -493,7 +649,7 @@ function SavedPlanSection({plan, userId}: {plan: SavedTrainingPlan; userId: numb
             <Text style={styles.workoutDistance}>
               {workout.target_distance_km ? `${workout.target_distance_km.toFixed(1)} km` : '-'}
             </Text>
-          </View>
+          </Pressable>
         ))}
       </View>
 
@@ -604,6 +760,18 @@ function formatMonth(dateString: string): string {
 
 function formatDay(dateString: string): string {
   return new Date(`${dateString}T12:00:00`).toLocaleString('en-US', {day: '2-digit'});
+}
+
+function formatSelectedWorkoutLabel(plan: SavedTrainingPlan, selectedWorkoutId: number): string {
+  const workout = plan.workouts.find(candidate => candidate.id === selectedWorkoutId);
+
+  if (!workout) {
+    return 'No workout selected';
+  }
+
+  return `${workout.scheduled_on} · ${formatWorkoutType(workout.type)} · ${
+    workout.target_distance_km ? `${workout.target_distance_km.toFixed(1)} km` : 'No target'
+  }`;
 }
 
 function SegmentButton({
@@ -1133,6 +1301,11 @@ const styles = StyleSheet.create({
     minHeight: 70,
     padding: 10,
   },
+  savedWorkoutRowSelected: {
+    backgroundColor: '#D8E7DD',
+    borderColor: '#1E5C4D',
+    borderWidth: 1,
+  },
   savedWorkoutDate: {
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
@@ -1174,6 +1347,30 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     lineHeight: 18,
+  },
+  statusControl: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  statusButton: {
+    borderColor: '#C9D1CB',
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  statusButtonSelected: {
+    backgroundColor: '#1E5C4D',
+    borderColor: '#1E5C4D',
+  },
+  statusButtonText: {
+    color: '#41504A',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  statusButtonTextSelected: {
+    color: '#FFFFFF',
   },
   logPanel: {
     backgroundColor: '#FFFFFF',

@@ -51,6 +51,12 @@ Completed:
   - loads the latest saved plan for the local runner on demand
   - displays plan dates, workout count, user id, and first scheduled workouts
   - shows workout date, type, status, week number, intensity, and distance
+- Added mobile quick run logging:
+  - select a workout from the saved plan
+  - enter distance and effort
+  - choose completed, shortened, skipped, or replaced
+  - submit to `POST /api/v1/activity-logs`
+  - refreshes the saved plan so workout status and adaptations are visible
 
 Verified:
 
