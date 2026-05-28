@@ -250,13 +250,14 @@ function PlannerScreen() {
             </Pressable>
           </View>
           <View style={styles.field}>
-            <Text style={styles.label}>Weekly km</Text>
+            <Text style={styles.label}>Current weekly km</Text>
             <TextInput
               value={weeklyKm}
               onChangeText={setWeeklyKm}
               style={styles.input}
               keyboardType="decimal-pad"
             />
+            <Text style={styles.fieldHint}>Average distance you run now</Text>
           </View>
         </View>
 
@@ -777,6 +778,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     textTransform: 'uppercase',
+  },
+  fieldHint: {
+    color: '#68736E',
+    fontSize: 12,
+    fontWeight: '600',
+    lineHeight: 16,
   },
   input: {
     backgroundColor: '#FFFFFF',
