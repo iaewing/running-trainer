@@ -57,6 +57,7 @@ Completed:
   - choose completed, shortened, skipped, or replaced
   - submit to `POST /api/v1/activity-logs`
   - refreshes the saved plan so workout status and adaptations are visible
+  - shows an already-logged notice and disables duplicate logging when a logged workout is selected
 
 Verified:
 

@@ -122,6 +122,13 @@ function PlannerScreen() {
     () => buildPreview(raceDistance, Number(weeklyKm) || 0, selectedDays, longRunDay),
     [longRunDay, raceDistance, selectedDays, weeklyKm],
   );
+  const selectedWorkout = useMemo(
+    () => savedPlan?.workouts.find(workout => workout.id === selectedWorkoutId) ?? null,
+    [savedPlan, selectedWorkoutId],
+  );
+  const selectedWorkoutAlreadyLogged = Boolean(
+    selectedWorkout && selectedWorkout.status !== 'planned',
+  );
 
   useEffect(() => {
     loadLatestPlan({showMessage: false});
@@ -253,6 +260,12 @@ function PlannerScreen() {
   async function submitQuickLog() {
     if (!localUserId || !savedPlan || !selectedWorkoutId) {
       setLogMessage('Select a saved workout before logging.');
+
+      return;
+    }
+
+    if (selectedWorkoutAlreadyLogged) {
+      setLogMessage('This workout is already logged.');
 
       return;
     }
@@ -479,6 +492,16 @@ function PlannerScreen() {
                   {formatSelectedWorkoutLabel(savedPlan, selectedWorkoutId)}
                 </Text>
               ) : null}
+              {selectedWorkoutAlreadyLogged && selectedWorkout ? (
+                <View style={styles.loggedNotice}>
+                  <Text style={styles.loggedNoticeTitle}>
+                    Already {formatWorkoutType(selectedWorkout.status)}
+                  </Text>
+                  <Text style={styles.loggedNoticeText}>
+                    Select a planned workout to add a new log.
+                  </Text>
+                </View>
+              ) : null}
               <View style={styles.fieldRow}>
                 <View style={styles.field}>
                   <Text style={styles.label}>Distance</Text>
@@ -526,11 +549,18 @@ function PlannerScreen() {
               </View>
               <Pressable
                 accessibilityRole="button"
-                disabled={isLoggingRun || !selectedWorkoutId}
+                disabled={isLoggingRun || !selectedWorkoutId || selectedWorkoutAlreadyLogged}
                 onPress={submitQuickLog}
-                style={[styles.primaryButton, isLoggingRun && styles.primaryButtonDisabled]}>
+                style={[
+                  styles.primaryButton,
+                  (isLoggingRun || selectedWorkoutAlreadyLogged) && styles.primaryButtonDisabled,
+                ]}>
                 <Text style={styles.primaryButtonText}>
-                  {isLoggingRun ? 'Logging...' : 'Log selected workout'}
+                  {selectedWorkoutAlreadyLogged
+                    ? 'Workout already logged'
+                    : isLoggingRun
+                      ? 'Logging...'
+                      : 'Log selected workout'}
                 </Text>
               </Pressable>
               {logMessage ? (
@@ -1344,6 +1374,25 @@ const styles = StyleSheet.create({
   },
   revisionText: {
     color: '#52615A',
+    fontSize: 13,
+    fontWeight: '600',
+    lineHeight: 18,
+  },
+  loggedNotice: {
+    backgroundColor: '#FFF3E8',
+    borderColor: '#E2A766',
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 3,
+    padding: 10,
+  },
+  loggedNoticeTitle: {
+    color: '#9A4B18',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  loggedNoticeText: {
+    color: '#7A5A3C',
     fontSize: 13,
     fontWeight: '600',
     lineHeight: 18,
