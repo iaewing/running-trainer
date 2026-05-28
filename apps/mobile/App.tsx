@@ -91,6 +91,7 @@ function PlannerScreen() {
   const safeAreaInsets = useSafeAreaInsets();
   const [raceDistance, setRaceDistance] = useState<RaceDistance>('10k');
   const [raceDate, setRaceDate] = useState('2026-08-23');
+  const [isRaceCalendarOpen, setIsRaceCalendarOpen] = useState(false);
   const [weeklyKm, setWeeklyKm] = useState('24');
   const [selectedDays, setSelectedDays] = useState([2, 4, 6]);
   const [longRunDay, setLongRunDay] = useState(6);
@@ -238,13 +239,15 @@ function PlannerScreen() {
         <View style={styles.fieldRow}>
           <View style={styles.field}>
             <Text style={styles.label}>Race date</Text>
-            <TextInput
-              value={raceDate}
-              onChangeText={setRaceDate}
-              placeholder="YYYY-MM-DD"
-              style={styles.input}
-              keyboardType="numbers-and-punctuation"
-            />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Choose race date"
+              accessibilityState={{expanded: isRaceCalendarOpen}}
+              onPress={() => setIsRaceCalendarOpen(current => !current)}
+              style={styles.dateButton}>
+              <Text style={styles.dateButtonText}>{formatReadableDate(raceDate)}</Text>
+              <Text style={styles.dateButtonIcon}>v</Text>
+            </Pressable>
           </View>
           <View style={styles.field}>
             <Text style={styles.label}>Weekly km</Text>
@@ -256,6 +259,16 @@ function PlannerScreen() {
             />
           </View>
         </View>
+
+        {isRaceCalendarOpen ? (
+          <RaceDateCalendar
+            selectedDate={raceDate}
+            onSelect={date => {
+              setRaceDate(date);
+              setIsRaceCalendarOpen(false);
+            }}
+          />
+        ) : null}
       </View>
 
       <View style={styles.section}>
@@ -463,6 +476,53 @@ function todayDateString(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+function parseDateString(dateString: string): Date {
+  const [year, month, day] = dateString.split('-').map(Number);
+
+  return new Date(year, month - 1, day);
+}
+
+function toDateString(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+}
+
+function startOfMonth(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function addMonths(date: Date, amount: number): Date {
+  return new Date(date.getFullYear(), date.getMonth() + amount, 1);
+}
+
+function buildCalendarCells(monthDate: Date): {dateString: string; day: number; isCurrentMonth: boolean}[] {
+  const firstDay = startOfMonth(monthDate);
+  const gridStart = new Date(firstDay);
+  gridStart.setDate(firstDay.getDate() - firstDay.getDay());
+
+  return Array.from({length: 42}, (_, index) => {
+    const date = new Date(gridStart);
+    date.setDate(gridStart.getDate() + index);
+
+    return {
+      dateString: toDateString(date),
+      day: date.getDate(),
+      isCurrentMonth: date.getMonth() === monthDate.getMonth(),
+    };
+  });
+}
+
+function formatReadableDate(dateString: string): string {
+  return parseDateString(dateString).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
 function formatRaceDistance(distance: RaceDistance): string {
   return distance === '10k' ? '10K' : 'Half marathon';
 }
@@ -503,6 +563,79 @@ function SegmentButton({
       style={[styles.segmentButton, selected && styles.segmentButtonSelected]}>
       <Text style={[styles.segmentText, selected && styles.segmentTextSelected]}>{label}</Text>
     </Pressable>
+  );
+}
+
+function RaceDateCalendar({
+  selectedDate,
+  onSelect,
+}: {
+  selectedDate: string;
+  onSelect: (date: string) => void;
+}) {
+  const [visibleMonth, setVisibleMonth] = useState(() => startOfMonth(parseDateString(selectedDate)));
+  const calendarCells = useMemo(() => buildCalendarCells(visibleMonth), [visibleMonth]);
+
+  return (
+    <View style={styles.calendar}>
+      <View style={styles.calendarHeader}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Previous month"
+          onPress={() => setVisibleMonth(current => addMonths(current, -1))}
+          style={styles.calendarNavButton}>
+          <Text style={styles.calendarNavText}>{"<"}</Text>
+        </Pressable>
+        <Text style={styles.calendarTitle}>
+          {visibleMonth.toLocaleString('en-US', {month: 'long', year: 'numeric'})}
+        </Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Next month"
+          onPress={() => setVisibleMonth(current => addMonths(current, 1))}
+          style={styles.calendarNavButton}>
+          <Text style={styles.calendarNavText}>{">"}</Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.calendarWeekdayRow}>
+        {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
+          <Text key={`${day}-${index}`} style={styles.calendarWeekday}>
+            {day}
+          </Text>
+        ))}
+      </View>
+
+      <View style={styles.calendarGrid}>
+        {calendarCells.map(cell => {
+          const isSelected = cell.dateString === selectedDate;
+
+          return (
+            <Pressable
+              key={cell.dateString}
+              accessibilityRole="button"
+              accessibilityLabel={`Select ${formatReadableDate(cell.dateString)}`}
+              accessibilityState={{selected: isSelected, disabled: !cell.isCurrentMonth}}
+              disabled={!cell.isCurrentMonth}
+              onPress={() => onSelect(cell.dateString)}
+              style={[
+                styles.calendarDay,
+                !cell.isCurrentMonth && styles.calendarDayMuted,
+                isSelected && styles.calendarDaySelected,
+              ]}>
+              <Text
+                style={[
+                  styles.calendarDayText,
+                  !cell.isCurrentMonth && styles.calendarDayTextMuted,
+                  isSelected && styles.calendarDayTextSelected,
+                ]}>
+                {cell.day}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
   );
 }
 
@@ -654,6 +787,104 @@ const styles = StyleSheet.create({
     fontSize: 16,
     minHeight: 46,
     paddingHorizontal: 12,
+  },
+  dateButton: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#C9D1CB',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'space-between',
+    minHeight: 46,
+    paddingHorizontal: 12,
+  },
+  dateButtonText: {
+    color: '#15211D',
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  dateButtonIcon: {
+    color: '#1E5C4D',
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  calendar: {
+    backgroundColor: '#F6F7F3',
+    borderColor: '#DDE3DC',
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 10,
+    padding: 10,
+  },
+  calendarHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  calendarNavButton: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#C9D1CB',
+    borderRadius: 8,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 36,
+    width: 40,
+  },
+  calendarNavText: {
+    color: '#1E5C4D',
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  calendarTitle: {
+    color: '#15211D',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  calendarWeekdayRow: {
+    flexDirection: 'row',
+  },
+  calendarWeekday: {
+    color: '#68736E',
+    fontSize: 12,
+    fontWeight: '800',
+    textAlign: 'center',
+    width: '14.285%',
+  },
+  calendarGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    rowGap: 5,
+  },
+  calendarDay: {
+    alignItems: 'center',
+    borderColor: 'transparent',
+    borderRadius: 8,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 38,
+    width: '14.285%',
+  },
+  calendarDayMuted: {
+    opacity: 0.35,
+  },
+  calendarDaySelected: {
+    backgroundColor: '#1E5C4D',
+    borderColor: '#1E5C4D',
+  },
+  calendarDayText: {
+    color: '#15211D',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  calendarDayTextMuted: {
+    color: '#68736E',
+  },
+  calendarDayTextSelected: {
+    color: '#FFFFFF',
   },
   dayGrid: {
     flexDirection: 'row',
