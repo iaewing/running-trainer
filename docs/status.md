@@ -13,10 +13,23 @@ Completed:
   - `GET /api/v1/health`
   - `POST /api/v1/training-plan-preview`
 - Replaced the generated React Native welcome screen with a V1 planner surface.
+- Added core training domain schema and models:
+  - athlete profiles
+  - race goals
+  - availability rules
+  - training plans
+  - plan revisions
+  - workouts and workout steps
+  - activity logs
+  - readiness logs
+  - life events
+  - integration connection/export/import support tables
+- Added stored plan generation:
+  - `POST /api/v1/training-plans`
 
 Verified:
 
-- API tests pass.
+- API tests pass: 7 tests, 19 assertions.
 - Mobile render test passes.
 - Mobile lint passes.
 - Xcode can list the generated iOS workspace and `RunningTrainerMobile` scheme.

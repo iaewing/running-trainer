@@ -63,4 +63,3 @@ class TrainingPlanPreviewTest extends TestCase
         $response->assertStatus(422);
     }
 }
-
