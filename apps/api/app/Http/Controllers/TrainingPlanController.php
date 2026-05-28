@@ -13,6 +13,23 @@ use Illuminate\Validation\Rule;
 
 class TrainingPlanController extends Controller
 {
+    public function index(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'user_id' => ['required', 'integer', 'exists:users,id'],
+        ]);
+
+        $plans = TrainingPlan::query()
+            ->with(['raceGoal', 'revisions', 'workouts' => fn ($query) => $query->orderBy('scheduled_on')])
+            ->where('user_id', $validated['user_id'])
+            ->orderByDesc('created_at')
+            ->get();
+
+        return response()->json([
+            'data' => $plans->map(fn (TrainingPlan $plan): array => $this->serializePlan($plan))->all(),
+        ]);
+    }
+
     public function store(Request $request, StoredTrainingPlanCreator $creator): JsonResponse
     {
         $validated = $request->validate([
@@ -49,6 +66,25 @@ class TrainingPlanController extends Controller
         return response()->json(['data' => $this->serializePlan($plan)], 201);
     }
 
+    public function show(Request $request, TrainingPlan $trainingPlan): JsonResponse
+    {
+        $validated = $request->validate([
+            'user_id' => ['required', 'integer', 'exists:users,id'],
+        ]);
+
+        abort_if($trainingPlan->user_id !== (int) $validated['user_id'], 404);
+
+        return response()->json([
+            'data' => $this->serializePlan(
+                $trainingPlan->load([
+                    'raceGoal',
+                    'revisions',
+                    'workouts' => fn ($query) => $query->orderBy('scheduled_on'),
+                ]),
+            ),
+        ]);
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -60,6 +96,7 @@ class TrainingPlanController extends Controller
             'level' => $plan->level,
             'starts_on' => $plan->starts_on->toDateString(),
             'ends_on' => $plan->ends_on->toDateString(),
+            'source_context' => $plan->source_context,
             'race_goal' => [
                 'id' => $plan->raceGoal->id,
                 'race_distance' => $plan->raceGoal->race_distance,
@@ -80,8 +117,8 @@ class TrainingPlanController extends Controller
                 'reason' => $revision->reason,
                 'summary' => $revision->summary,
                 'changes' => $revision->changes,
+                'created_at' => $revision->created_at->toIso8601String(),
             ])->all(),
         ];
     }
 }
-
