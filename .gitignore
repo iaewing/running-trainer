@@ -1,0 +1,10 @@
+.DS_Store
+.idea/
+.vscode/
+*.log
+
+# Local environment files are app-local and should not be committed.
+.env
+.env.*
+!.env.example
+

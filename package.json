@@ -1,0 +1,13 @@
+{
+  "name": "running-trainer",
+  "private": true,
+  "scripts": {
+    "dev:api": "php apps/api/artisan serve",
+    "test:api": "composer --working-dir=apps/api test",
+    "dev:mobile": "npm --prefix apps/mobile start",
+    "ios": "npm --prefix apps/mobile run ios",
+    "lint:mobile": "npm --prefix apps/mobile run lint",
+    "test:mobile": "npm --prefix apps/mobile test"
+  }
+}
+
