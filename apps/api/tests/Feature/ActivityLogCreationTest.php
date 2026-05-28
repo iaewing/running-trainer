@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\ActivityLog;
+use App\Models\PlanRevision;
 use App\Models\User;
 use App\Models\Workout;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -82,6 +83,59 @@ class ActivityLogCreationTest extends TestCase
         $this->assertDatabaseCount(ActivityLog::class, 0);
     }
 
+    public function test_it_reduces_the_next_quality_workout_after_a_high_effort_log(): void
+    {
+        $user = User::factory()->create();
+        $this->createPlan($user);
+        $loggedWorkout = Workout::where('type', 'easy')->orderBy('scheduled_on')->firstOrFail();
+        $nextQualityWorkout = Workout::where('scheduled_on', '>', $loggedWorkout->scheduled_on)
+            ->whereIn('type', ['tempo', 'intervals', 'long_run'])
+            ->orderBy('scheduled_on')
+            ->firstOrFail();
+        $originalDistance = $nextQualityWorkout->target_distance_km;
+
+        $this->postJson('/api/v1/activity-logs', [
+            'user_id' => $user->id,
+            'workout_id' => $loggedWorkout->id,
+            'distance_km' => $loggedWorkout->target_distance_km,
+            'duration_seconds' => 2100,
+            'effort_rpe' => 8,
+            'completion_status' => 'completed',
+        ])->assertCreated();
+
+        $nextQualityWorkout->refresh();
+
+        $this->assertSame('very_easy', $nextQualityWorkout->target_intensity);
+        $this->assertLessThan($originalDistance, $nextQualityWorkout->target_distance_km);
+        $this->assertDatabaseHas(PlanRevision::class, [
+            'reason' => 'high_effort',
+        ]);
+    }
+
+    public function test_it_reduces_the_next_quality_workout_after_a_skipped_run(): void
+    {
+        $user = User::factory()->create();
+        $this->createPlan($user);
+        $loggedWorkout = Workout::where('type', 'tempo')->orderBy('scheduled_on')->firstOrFail();
+        $nextQualityWorkout = Workout::where('scheduled_on', '>', $loggedWorkout->scheduled_on)
+            ->whereIn('type', ['tempo', 'intervals', 'long_run'])
+            ->orderBy('scheduled_on')
+            ->firstOrFail();
+
+        $this->postJson('/api/v1/activity-logs', [
+            'user_id' => $user->id,
+            'workout_id' => $loggedWorkout->id,
+            'completion_status' => 'skipped',
+            'notes' => 'Work ran late.',
+        ])->assertCreated();
+
+        $this->assertSame('skipped', $loggedWorkout->refresh()->status);
+        $this->assertSame('very_easy', $nextQualityWorkout->refresh()->target_intensity);
+        $this->assertDatabaseHas(PlanRevision::class, [
+            'reason' => 'missed_workout',
+        ]);
+    }
+
     private function createPlan(User $user): void
     {
         $this->postJson('/api/v1/training-plans', [
@@ -96,4 +150,3 @@ class ActivityLogCreationTest extends TestCase
         ])->assertCreated();
     }
 }
-

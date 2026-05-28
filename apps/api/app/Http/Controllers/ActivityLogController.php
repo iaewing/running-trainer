@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\ActivityLog;
 use App\Models\User;
 use App\Models\Workout;
+use App\Training\PlanAdaptationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -12,7 +13,7 @@ use Illuminate\Validation\Rule;
 
 class ActivityLogController extends Controller
 {
-    public function store(Request $request): JsonResponse
+    public function store(Request $request, PlanAdaptationService $adaptationService): JsonResponse
     {
         $validated = $request->validate([
             'user_id' => ['required', 'integer', 'exists:users,id'],
@@ -36,7 +37,7 @@ class ActivityLogController extends Controller
             'Workout does not belong to the given user.',
         );
 
-        $activityLog = DB::transaction(function () use ($validated, $workout): ActivityLog {
+        $activityLog = DB::transaction(function () use ($adaptationService, $validated, $workout): ActivityLog {
             $activityLog = ActivityLog::create([
                 'user_id' => $validated['user_id'],
                 'workout_id' => $workout?->id,
@@ -52,6 +53,8 @@ class ActivityLogController extends Controller
             if ($workout) {
                 $workout->update(['status' => $validated['completion_status']]);
             }
+
+            $adaptationService->adaptAfter($activityLog);
 
             return $activityLog->load('workout');
         });
@@ -84,4 +87,3 @@ class ActivityLogController extends Controller
         ];
     }
 }
-

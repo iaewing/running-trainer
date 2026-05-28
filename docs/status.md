@@ -30,10 +30,15 @@ Completed:
   - `POST /api/v1/activity-logs`
   - supports planned-workout logs and unplanned manual runs
   - updates linked workout status from completion status
+- Added initial adaptation rules:
+  - high-effort logs reduce the next planned quality workout
+  - skipped logs reduce the next planned quality workout
+  - shortened logs use the same recovery-protection path
+  - adaptations create plan revisions for explainability
 
 Verified:
 
-- API tests pass: 10 tests, 33 assertions.
+- API tests pass: 12 tests, 43 assertions.
 - Mobile render test passes.
 - Mobile lint passes.
 - Xcode can list the generated iOS workspace and `RunningTrainerMobile` scheme.
