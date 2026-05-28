@@ -1,4 +1,4 @@
-import React, {useMemo, useState} from 'react';
+import React, {useEffect, useMemo, useState} from 'react';
 import {
   Pressable,
   ScrollView,
@@ -26,6 +26,7 @@ type PreviewWorkout = {
   distance: string;
   intensity: string;
 };
+type PlanPage = 'view' | 'create';
 type BootstrapUserResponse = {
   data: {
     id: number;
@@ -102,11 +103,17 @@ function PlannerScreen() {
   const [savedPlan, setSavedPlan] = useState<SavedTrainingPlan | null>(null);
   const [isLoadingSavedPlan, setIsLoadingSavedPlan] = useState(false);
   const [loadMessage, setLoadMessage] = useState<string | null>(null);
+  const [activePage, setActivePage] = useState<PlanPage>('view');
 
   const preview = useMemo(
     () => buildPreview(raceDistance, Number(weeklyKm) || 0, selectedDays, longRunDay),
     [longRunDay, raceDistance, selectedDays, weeklyKm],
   );
+
+  useEffect(() => {
+    loadLatestPlan({showMessage: false});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function toggleDay(day: number) {
     setSelectedDays(current => {
@@ -153,6 +160,8 @@ function PlannerScreen() {
       setSavedPlanId(plan.data.id);
       setSavedPlan(savedPlanResult.data);
       setSaveMessage(`Saved plan ${plan.data.id} with ${plan.data.workouts.length} workouts.`);
+      setLoadMessage(`Saved plan ${plan.data.id} with ${plan.data.workouts.length} workouts.`);
+      setActivePage('view');
     } catch (error) {
       setSavedPlanId(null);
       setSavedPlan(null);
@@ -162,9 +171,11 @@ function PlannerScreen() {
     }
   }
 
-  async function loadLatestPlan() {
+  async function loadLatestPlan({showMessage = true}: {showMessage?: boolean} = {}) {
     setIsLoadingSavedPlan(true);
-    setLoadMessage(null);
+    if (showMessage) {
+      setLoadMessage(null);
+    }
     setSaveMessage(null);
 
     try {
@@ -177,7 +188,11 @@ function PlannerScreen() {
         setLocalUserId(user.data.id);
         setSavedPlanId(null);
         setSavedPlan(null);
-        setLoadMessage('No saved plans yet.');
+        setActivePage('create');
+
+        if (showMessage) {
+          setLoadMessage('No saved plans yet.');
+        }
 
         return;
       }
@@ -185,9 +200,17 @@ function PlannerScreen() {
       setLocalUserId(user.data.id);
       setSavedPlanId(plans.data[0].id);
       setSavedPlan(plans.data[0]);
-      setLoadMessage(`Loaded plan ${plans.data[0].id} with ${plans.data[0].workouts.length} workouts.`);
+      setActivePage('view');
+
+      if (showMessage) {
+        setLoadMessage(`Loaded plan ${plans.data[0].id} with ${plans.data[0].workouts.length} workouts.`);
+      }
     } catch (error) {
-      setLoadMessage(error instanceof Error ? error.message : 'Could not load saved plans.');
+      setActivePage(savedPlan ? 'view' : 'create');
+
+      if (showMessage) {
+        setLoadMessage(error instanceof Error ? error.message : 'Could not load saved plans.');
+      }
     } finally {
       setIsLoadingSavedPlan(false);
     }
@@ -202,18 +225,19 @@ function PlannerScreen() {
       ]}>
       <View style={styles.header}>
         <Text style={styles.kicker}>Running Trainer</Text>
-        <Text style={styles.title}>
-          {raceDistance === '10k' ? '10K' : 'Half marathon'} plan
-        </Text>
-        <Pressable
-          accessibilityRole="button"
-          disabled={isLoadingSavedPlan}
-          onPress={loadLatestPlan}
-          style={[styles.secondaryButton, isLoadingSavedPlan && styles.secondaryButtonDisabled]}>
-          <Text style={styles.secondaryButtonText}>
-            {isLoadingSavedPlan ? 'Loading...' : 'Load latest plan'}
-          </Text>
-        </Pressable>
+        <Text style={styles.title}>{activePage === 'view' ? 'Current plan' : 'Create plan'}</Text>
+        <View style={styles.segmentedControl}>
+          <SegmentButton
+            label="View plan"
+            selected={activePage === 'view'}
+            onPress={() => setActivePage('view')}
+          />
+          <SegmentButton
+            label="Create plan"
+            selected={activePage === 'create'}
+            onPress={() => setActivePage('create')}
+          />
+        </View>
         {loadMessage ? (
           <Text style={[styles.saveMessage, savedPlan ? styles.saveMessageSuccess : styles.saveMessageError]}>
             {loadMessage}
@@ -221,172 +245,207 @@ function PlannerScreen() {
         ) : null}
       </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Goal</Text>
-        <View style={styles.segmentedControl}>
-          <SegmentButton
-            label="10K"
-            selected={raceDistance === '10k'}
-            onPress={() => setRaceDistance('10k')}
-          />
-          <SegmentButton
-            label="Half"
-            selected={raceDistance === 'half_marathon'}
-            onPress={() => setRaceDistance('half_marathon')}
-          />
-        </View>
-
-        <View style={styles.fieldRow}>
-          <View style={styles.field}>
-            <Text style={styles.label}>Race date</Text>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Choose race date"
-              accessibilityState={{expanded: isRaceCalendarOpen}}
-              onPress={() => setIsRaceCalendarOpen(current => !current)}
-              style={styles.dateButton}>
-              <Text style={styles.dateButtonText}>{formatReadableDate(raceDate)}</Text>
-              <Text style={styles.dateButtonIcon}>v</Text>
-            </Pressable>
-          </View>
-          <View style={styles.field}>
-            <Text style={styles.label}>Current weekly km</Text>
-            <TextInput
-              value={weeklyKm}
-              onChangeText={setWeeklyKm}
-              style={styles.input}
-              keyboardType="decimal-pad"
-            />
-            <Text style={styles.fieldHint}>Average distance you run now</Text>
-          </View>
-        </View>
-
-        {isRaceCalendarOpen ? (
-          <RaceDateCalendar
-            selectedDate={raceDate}
-            onSelect={date => {
-              setRaceDate(date);
-              setIsRaceCalendarOpen(false);
-            }}
-          />
-        ) : null}
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Training days</Text>
-        <View style={styles.dayGrid}>
-          {weekdays.map(day => (
-            <Pressable
-              key={day.iso}
-              accessibilityRole="button"
-              accessibilityState={{selected: selectedDays.includes(day.iso)}}
-              onPress={() => toggleDay(day.iso)}
-              style={[
-                styles.dayButton,
-                selectedDays.includes(day.iso) && styles.dayButtonSelected,
-              ]}>
-              <Text
-                style={[
-                  styles.dayShort,
-                  selectedDays.includes(day.iso) && styles.dayShortSelected,
-                ]}>
-                {day.short}
-              </Text>
-              <Text
-                style={[
-                  styles.dayLabel,
-                  selectedDays.includes(day.iso) && styles.dayLabelSelected,
-                ]}>
-                {day.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-
-        <Text style={styles.label}>Long run</Text>
-        <View style={styles.longRunRow}>
-          {weekdays
-            .filter(day => selectedDays.includes(day.iso))
-            .map(day => (
-              <Pressable
-                key={day.iso}
-                accessibilityRole="button"
-                accessibilityState={{selected: longRunDay === day.iso}}
-                onPress={() => setLongRunDay(day.iso)}
-                style={[
-                  styles.longRunButton,
-                  longRunDay === day.iso && styles.longRunButtonSelected,
-                ]}>
-                <Text
-                  style={[
-                    styles.longRunText,
-                    longRunDay === day.iso && styles.longRunTextSelected,
-                  ]}>
-                  {day.label}
-                </Text>
-              </Pressable>
-            ))}
-        </View>
-      </View>
-
-      <View style={styles.section}>
-        <View style={styles.previewHeader}>
-          <View>
-            <Text style={styles.sectionTitle}>Week preview</Text>
-            <Text style={styles.subtle}>{preview.target} km target</Text>
-          </View>
-          <Text style={styles.raceDate}>{raceDate}</Text>
-        </View>
-
-        <View style={styles.workoutList}>
-          {preview.workouts.map(workout => (
-            <View key={`${workout.day}-${workout.type}`} style={styles.workoutRow}>
-              <View style={styles.workoutDay}>
-                <Text style={styles.workoutDayText}>{workout.day}</Text>
-              </View>
-              <View style={styles.workoutMain}>
-                <Text style={styles.workoutType}>{workout.type}</Text>
-                <Text style={styles.workoutMeta}>{workout.intensity}</Text>
-              </View>
-              <Text style={styles.workoutDistance}>{workout.distance}</Text>
+      {activePage === 'create' ? (
+        <>
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Goal</Text>
+            <View style={styles.segmentedControl}>
+              <SegmentButton
+                label="10K"
+                selected={raceDistance === '10k'}
+                onPress={() => setRaceDistance('10k')}
+              />
+              <SegmentButton
+                label="Half"
+                selected={raceDistance === 'half_marathon'}
+                onPress={() => setRaceDistance('half_marathon')}
+              />
             </View>
-          ))}
-        </View>
 
-        <Pressable
-          accessibilityRole="button"
-          disabled={isSavingPlan}
-          onPress={savePlan}
-          style={[styles.primaryButton, isSavingPlan && styles.primaryButtonDisabled]}>
-          <Text style={styles.primaryButtonText}>
-            {isSavingPlan ? 'Saving...' : savedPlanId ? 'Save again' : 'Save plan'}
-          </Text>
-        </Pressable>
+            <View style={styles.fieldRow}>
+              <View style={styles.field}>
+                <Text style={styles.label}>Race date</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Choose race date"
+                  accessibilityState={{expanded: isRaceCalendarOpen}}
+                  onPress={() => setIsRaceCalendarOpen(current => !current)}
+                  style={styles.dateButton}>
+                  <Text style={styles.dateButtonText}>{formatReadableDate(raceDate)}</Text>
+                  <Text style={styles.dateButtonIcon}>v</Text>
+                </Pressable>
+              </View>
+              <View style={styles.field}>
+                <Text style={styles.label}>Current weekly km</Text>
+                <TextInput
+                  value={weeklyKm}
+                  onChangeText={setWeeklyKm}
+                  style={styles.input}
+                  keyboardType="decimal-pad"
+                />
+                <Text style={styles.fieldHint}>Average distance you run now</Text>
+              </View>
+            </View>
 
-        {saveMessage ? (
-          <Text style={[styles.saveMessage, savedPlanId ? styles.saveMessageSuccess : styles.saveMessageError]}>
-            {saveMessage}
-          </Text>
-        ) : null}
-      </View>
-
-      {savedPlan ? (
-        <SavedPlanSection plan={savedPlan} userId={localUserId} />
-      ) : null}
-
-      <View style={styles.logPanel}>
-        <Text style={styles.sectionTitle}>Quick log</Text>
-        <View style={styles.fieldRow}>
-          <View style={styles.field}>
-            <Text style={styles.label}>Distance</Text>
-            <TextInput value="" placeholder="km" style={styles.input} keyboardType="decimal-pad" />
+            {isRaceCalendarOpen ? (
+              <RaceDateCalendar
+                selectedDate={raceDate}
+                onSelect={date => {
+                  setRaceDate(date);
+                  setIsRaceCalendarOpen(false);
+                }}
+              />
+            ) : null}
           </View>
-          <View style={styles.field}>
-            <Text style={styles.label}>Effort</Text>
-            <TextInput value="" placeholder="RPE" style={styles.input} keyboardType="number-pad" />
+
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Training days</Text>
+            <View style={styles.dayGrid}>
+              {weekdays.map(day => (
+                <Pressable
+                  key={day.iso}
+                  accessibilityRole="button"
+                  accessibilityState={{selected: selectedDays.includes(day.iso)}}
+                  onPress={() => toggleDay(day.iso)}
+                  style={[
+                    styles.dayButton,
+                    selectedDays.includes(day.iso) && styles.dayButtonSelected,
+                  ]}>
+                  <Text
+                    style={[
+                      styles.dayShort,
+                      selectedDays.includes(day.iso) && styles.dayShortSelected,
+                    ]}>
+                    {day.short}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.dayLabel,
+                      selectedDays.includes(day.iso) && styles.dayLabelSelected,
+                    ]}>
+                    {day.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <Text style={styles.label}>Long run</Text>
+            <View style={styles.longRunRow}>
+              {weekdays
+                .filter(day => selectedDays.includes(day.iso))
+                .map(day => (
+                  <Pressable
+                    key={day.iso}
+                    accessibilityRole="button"
+                    accessibilityState={{selected: longRunDay === day.iso}}
+                    onPress={() => setLongRunDay(day.iso)}
+                    style={[
+                      styles.longRunButton,
+                      longRunDay === day.iso && styles.longRunButtonSelected,
+                    ]}>
+                    <Text
+                      style={[
+                        styles.longRunText,
+                        longRunDay === day.iso && styles.longRunTextSelected,
+                      ]}>
+                      {day.label}
+                    </Text>
+                  </Pressable>
+                ))}
+            </View>
           </View>
-        </View>
-      </View>
+
+          <View style={styles.section}>
+            <View style={styles.previewHeader}>
+              <View>
+                <Text style={styles.sectionTitle}>Week preview</Text>
+                <Text style={styles.subtle}>{preview.target} km target</Text>
+              </View>
+              <Text style={styles.raceDate}>{raceDate}</Text>
+            </View>
+
+            <View style={styles.workoutList}>
+              {preview.workouts.map(workout => (
+                <View key={`${workout.day}-${workout.type}`} style={styles.workoutRow}>
+                  <View style={styles.workoutDay}>
+                    <Text style={styles.workoutDayText}>{workout.day}</Text>
+                  </View>
+                  <View style={styles.workoutMain}>
+                    <Text style={styles.workoutType}>{workout.type}</Text>
+                    <Text style={styles.workoutMeta}>{workout.intensity}</Text>
+                  </View>
+                  <Text style={styles.workoutDistance}>{workout.distance}</Text>
+                </View>
+              ))}
+            </View>
+
+            <Pressable
+              accessibilityRole="button"
+              disabled={isSavingPlan}
+              onPress={savePlan}
+              style={[styles.primaryButton, isSavingPlan && styles.primaryButtonDisabled]}>
+              <Text style={styles.primaryButtonText}>
+                {isSavingPlan ? 'Saving...' : savedPlanId ? 'Save as current plan' : 'Save plan'}
+              </Text>
+            </Pressable>
+
+            {saveMessage ? (
+              <Text style={[styles.saveMessage, savedPlanId ? styles.saveMessageSuccess : styles.saveMessageError]}>
+                {saveMessage}
+              </Text>
+            ) : null}
+          </View>
+        </>
+      ) : (
+        <>
+          {savedPlan ? (
+            <View style={styles.logPanel}>
+              <Text style={styles.sectionTitle}>Quick log</Text>
+              <View style={styles.fieldRow}>
+                <View style={styles.field}>
+                  <Text style={styles.label}>Distance</Text>
+                  <TextInput value="" placeholder="km" style={styles.input} keyboardType="decimal-pad" />
+                </View>
+                <View style={styles.field}>
+                  <Text style={styles.label}>Effort</Text>
+                  <TextInput value="" placeholder="RPE" style={styles.input} keyboardType="number-pad" />
+                </View>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>
+                {isLoadingSavedPlan ? 'Loading current plan' : 'No current plan'}
+              </Text>
+              <Text style={styles.subtle}>
+                {isLoadingSavedPlan
+                  ? 'Checking for the latest saved plan.'
+                  : 'Create a plan to make it your current plan.'}
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setActivePage('create')}
+                style={styles.primaryButton}>
+                <Text style={styles.primaryButtonText}>Create plan</Text>
+              </Pressable>
+            </View>
+          )}
+
+          <Pressable
+            accessibilityRole="button"
+            disabled={isLoadingSavedPlan}
+            onPress={() => loadLatestPlan()}
+            style={[styles.secondaryButton, isLoadingSavedPlan && styles.secondaryButtonDisabled]}>
+            <Text style={styles.secondaryButtonText}>
+              {isLoadingSavedPlan ? 'Refreshing...' : 'Refresh current plan'}
+            </Text>
+          </Pressable>
+
+          {savedPlan ? (
+            <SavedPlanSection plan={savedPlan} userId={localUserId} />
+          ) : null}
+        </>
+      )}
     </ScrollView>
   );
 }
