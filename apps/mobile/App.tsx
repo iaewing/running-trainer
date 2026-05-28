@@ -32,10 +32,36 @@ type BootstrapUserResponse = {
   };
 };
 type TrainingPlanResponse = {
-  data: {
-    id: number;
-    workouts: unknown[];
+  data: SavedTrainingPlan;
+};
+type TrainingPlansResponse = {
+  data: SavedTrainingPlan[];
+};
+type SavedTrainingPlan = {
+  id: number;
+  level: string;
+  starts_on: string;
+  ends_on: string;
+  race_goal: {
+    race_distance: RaceDistance;
+    race_date: string;
   };
+  workouts: SavedWorkout[];
+  revisions: {
+    id: number;
+    reason: string;
+    summary: string;
+  }[];
+};
+type SavedWorkout = {
+  id: number;
+  week_number: number;
+  scheduled_on: string;
+  type: string;
+  status: string;
+  target_distance_km: number | null;
+  target_intensity: string | null;
+  note: string | null;
 };
 
 const apiBaseUrl = 'http://localhost:8010/api/v1';
@@ -71,6 +97,10 @@ function PlannerScreen() {
   const [isSavingPlan, setIsSavingPlan] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [savedPlanId, setSavedPlanId] = useState<number | null>(null);
+  const [localUserId, setLocalUserId] = useState<number | null>(null);
+  const [savedPlan, setSavedPlan] = useState<SavedTrainingPlan | null>(null);
+  const [isLoadingSavedPlan, setIsLoadingSavedPlan] = useState(false);
+  const [loadMessage, setLoadMessage] = useState<string | null>(null);
 
   const preview = useMemo(
     () => buildPreview(raceDistance, Number(weeklyKm) || 0, selectedDays, longRunDay),
@@ -96,15 +126,10 @@ function PlannerScreen() {
   async function savePlan() {
     setIsSavingPlan(true);
     setSaveMessage(null);
+    setLoadMessage(null);
 
     try {
-      const user = await requestJson<BootstrapUserResponse>('/athlete-bootstrap', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: 'Local Runner',
-          email: 'local-runner@running-trainer.test',
-        }),
-      });
+      const user = await bootstrapLocalUser();
       const plan = await requestJson<TrainingPlanResponse>('/training-plans', {
         method: 'POST',
         body: JSON.stringify({
@@ -118,14 +143,52 @@ function PlannerScreen() {
           level: 'beginner',
         }),
       });
+      const savedPlanResult = await requestJson<TrainingPlanResponse>(
+        `/training-plans/${plan.data.id}?user_id=${user.data.id}`,
+        {method: 'GET'},
+      );
 
+      setLocalUserId(user.data.id);
       setSavedPlanId(plan.data.id);
+      setSavedPlan(savedPlanResult.data);
       setSaveMessage(`Saved plan ${plan.data.id} with ${plan.data.workouts.length} workouts.`);
     } catch (error) {
       setSavedPlanId(null);
+      setSavedPlan(null);
       setSaveMessage(error instanceof Error ? error.message : 'Could not save the plan.');
     } finally {
       setIsSavingPlan(false);
+    }
+  }
+
+  async function loadLatestPlan() {
+    setIsLoadingSavedPlan(true);
+    setLoadMessage(null);
+    setSaveMessage(null);
+
+    try {
+      const user = await bootstrapLocalUser();
+      const plans = await requestJson<TrainingPlansResponse>(`/training-plans?user_id=${user.data.id}`, {
+        method: 'GET',
+      });
+
+      if (plans.data.length === 0) {
+        setLocalUserId(user.data.id);
+        setSavedPlanId(null);
+        setSavedPlan(null);
+        setLoadMessage('No saved plans yet.');
+
+        return;
+      }
+
+      setLocalUserId(user.data.id);
+      setSavedPlanId(plans.data[0].id);
+      setSavedPlan(plans.data[0]);
+      setLoadMessage(`Loaded plan ${plans.data[0].id} with ${plans.data[0].workouts.length} workouts.`);
+    } catch (error) {
+      setLoadMessage(error instanceof Error ? error.message : 'Could not load saved plans.');
+    } finally {
+      setIsLoadingSavedPlan(false);
     }
   }
 
@@ -141,6 +204,20 @@ function PlannerScreen() {
         <Text style={styles.title}>
           {raceDistance === '10k' ? '10K' : 'Half marathon'} plan
         </Text>
+        <Pressable
+          accessibilityRole="button"
+          disabled={isLoadingSavedPlan}
+          onPress={loadLatestPlan}
+          style={[styles.secondaryButton, isLoadingSavedPlan && styles.secondaryButtonDisabled]}>
+          <Text style={styles.secondaryButtonText}>
+            {isLoadingSavedPlan ? 'Loading...' : 'Load latest plan'}
+          </Text>
+        </Pressable>
+        {loadMessage ? (
+          <Text style={[styles.saveMessage, savedPlan ? styles.saveMessageSuccess : styles.saveMessageError]}>
+            {loadMessage}
+          </Text>
+        ) : null}
       </View>
 
       <View style={styles.section}>
@@ -279,6 +356,10 @@ function PlannerScreen() {
         ) : null}
       </View>
 
+      {savedPlan ? (
+        <SavedPlanSection plan={savedPlan} userId={localUserId} />
+      ) : null}
+
       <View style={styles.logPanel}>
         <Text style={styles.sectionTitle}>Quick log</Text>
         <View style={styles.fieldRow}>
@@ -293,6 +374,60 @@ function PlannerScreen() {
         </View>
       </View>
     </ScrollView>
+  );
+}
+
+function SavedPlanSection({plan, userId}: {plan: SavedTrainingPlan; userId: number | null}) {
+  const upcomingWorkouts = plan.workouts.slice(0, 12);
+
+  return (
+    <View style={styles.section}>
+      <View style={styles.previewHeader}>
+        <View>
+          <Text style={styles.sectionTitle}>Saved plan</Text>
+          <Text style={styles.subtle}>
+            {formatRaceDistance(plan.race_goal.race_distance)} · {plan.workouts.length} workouts
+          </Text>
+        </View>
+        <View style={styles.planBadge}>
+          <Text style={styles.planBadgeText}>#{plan.id}</Text>
+        </View>
+      </View>
+
+      <View style={styles.planMetaRow}>
+        <Text style={styles.planMetaText}>{plan.starts_on}</Text>
+        <Text style={styles.planMetaText}>{plan.ends_on}</Text>
+        {userId ? <Text style={styles.planMetaText}>User {userId}</Text> : null}
+      </View>
+
+      <View style={styles.workoutList}>
+        {upcomingWorkouts.map(workout => (
+          <View key={workout.id} style={styles.savedWorkoutRow}>
+            <View style={styles.savedWorkoutDate}>
+              <Text style={styles.savedWorkoutMonth}>{formatMonth(workout.scheduled_on)}</Text>
+              <Text style={styles.savedWorkoutDay}>{formatDay(workout.scheduled_on)}</Text>
+            </View>
+            <View style={styles.workoutMain}>
+              <View style={styles.savedWorkoutTitleRow}>
+                <Text style={styles.workoutType}>{formatWorkoutType(workout.type)}</Text>
+                <Text style={styles.statusPill}>{workout.status}</Text>
+              </View>
+              <Text style={styles.workoutMeta}>
+                Week {workout.week_number}
+                {workout.target_intensity ? ` · ${formatIntensity(workout.target_intensity)}` : ''}
+              </Text>
+            </View>
+            <Text style={styles.workoutDistance}>
+              {workout.target_distance_km ? `${workout.target_distance_km.toFixed(1)} km` : '-'}
+            </Text>
+          </View>
+        ))}
+      </View>
+
+      {plan.revisions[0] ? (
+        <Text style={styles.revisionText}>{plan.revisions[0].summary}</Text>
+      ) : null}
+    </View>
   );
 }
 
@@ -314,8 +449,41 @@ async function requestJson<T>(path: string, init: RequestInit): Promise<T> {
   return payload as T;
 }
 
+async function bootstrapLocalUser(): Promise<BootstrapUserResponse> {
+  return requestJson<BootstrapUserResponse>('/athlete-bootstrap', {
+    method: 'POST',
+    body: JSON.stringify({
+      name: 'Local Runner',
+      email: 'local-runner@running-trainer.test',
+    }),
+  });
+}
+
 function todayDateString(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+function formatRaceDistance(distance: RaceDistance): string {
+  return distance === '10k' ? '10K' : 'Half marathon';
+}
+
+function formatWorkoutType(type: string): string {
+  return type
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+function formatIntensity(intensity: string): string {
+  return intensity.replace('_', ' ');
+}
+
+function formatMonth(dateString: string): string {
+  return new Date(`${dateString}T12:00:00`).toLocaleString('en-US', {month: 'short'});
+}
+
+function formatDay(dateString: string): string {
+  return new Date(`${dateString}T12:00:00`).toLocaleString('en-US', {day: '2-digit'});
 }
 
 function SegmentButton({
@@ -407,6 +575,25 @@ const styles = StyleSheet.create({
     color: '#15211D',
     fontSize: 32,
     fontWeight: '700',
+  },
+  secondaryButton: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: '#E8EEE9',
+    borderColor: '#C9D1CB',
+    borderRadius: 8,
+    borderWidth: 1,
+    minHeight: 42,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  secondaryButtonDisabled: {
+    backgroundColor: '#F0F3EF',
+  },
+  secondaryButtonText: {
+    color: '#1E5C4D',
+    fontSize: 14,
+    fontWeight: '800',
   },
   section: {
     backgroundColor: '#FFFFFF',
@@ -612,6 +799,84 @@ const styles = StyleSheet.create({
   },
   saveMessageError: {
     color: '#B33A2E',
+  },
+  planBadge: {
+    alignItems: 'center',
+    backgroundColor: '#E8EEE9',
+    borderRadius: 8,
+    minHeight: 34,
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+  },
+  planBadgeText: {
+    color: '#1E5C4D',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  planMetaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  planMetaText: {
+    backgroundColor: '#F6F7F3',
+    borderRadius: 8,
+    color: '#52615A',
+    fontSize: 12,
+    fontWeight: '700',
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+  },
+  savedWorkoutRow: {
+    alignItems: 'center',
+    backgroundColor: '#F6F7F3',
+    borderRadius: 8,
+    flexDirection: 'row',
+    gap: 12,
+    minHeight: 70,
+    padding: 10,
+  },
+  savedWorkoutDate: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    justifyContent: 'center',
+    minHeight: 48,
+    width: 50,
+  },
+  savedWorkoutMonth: {
+    color: '#68736E',
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  savedWorkoutDay: {
+    color: '#1E5C4D',
+    fontSize: 17,
+    fontWeight: '900',
+  },
+  savedWorkoutTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 7,
+  },
+  statusPill: {
+    backgroundColor: '#E8EEE9',
+    borderRadius: 8,
+    color: '#52615A',
+    fontSize: 11,
+    fontWeight: '800',
+    overflow: 'hidden',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    textTransform: 'uppercase',
+  },
+  revisionText: {
+    color: '#52615A',
+    fontSize: 13,
+    fontWeight: '600',
+    lineHeight: 18,
   },
   logPanel: {
     backgroundColor: '#FFFFFF',

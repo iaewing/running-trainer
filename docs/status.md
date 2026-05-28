@@ -46,6 +46,11 @@ Completed:
   - creates/reuses the local runner
   - saves the current goal, availability, and weekly distance
   - displays the saved plan id and workout count
+- Added mobile saved-plan viewing:
+  - fetches the stored plan after save
+  - loads the latest saved plan for the local runner on demand
+  - displays plan dates, workout count, user id, and first scheduled workouts
+  - shows workout date, type, status, week number, intensity, and distance
 
 Verified:
 
