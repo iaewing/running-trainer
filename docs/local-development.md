@@ -48,6 +48,8 @@ In another terminal:
 npm --prefix apps/mobile run ios
 ```
 
+To validate the planner-to-API flow, keep the API server running at `http://localhost:8010`, then tap `Save plan` in the app. The app uses `POST /api/v1/athlete-bootstrap` to create/reuse a local runner and then saves the plan with `POST /api/v1/training-plans`.
+
 If iOS pods are missing:
 
 ```sh
@@ -66,4 +68,3 @@ npm run ios
 npm run lint:mobile
 npm run test:mobile
 ```
-

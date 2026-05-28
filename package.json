@@ -2,7 +2,7 @@
   "name": "running-trainer",
   "private": true,
   "scripts": {
-    "dev:api": "php apps/api/artisan serve",
+    "dev:api": "php apps/api/artisan serve --port=8010",
     "test:api": "composer --working-dir=apps/api test",
     "dev:mobile": "npm --prefix apps/mobile start",
     "ios": "npm --prefix apps/mobile run ios",
@@ -10,4 +10,3 @@
     "test:mobile": "npm --prefix apps/mobile test"
   }
 }
-

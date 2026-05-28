@@ -30,6 +30,9 @@ Completed:
   - `GET /api/v1/training-plans?user_id={id}`
   - `GET /api/v1/training-plans/{id}?user_id={id}`
   - returns race goal, workouts, revisions, and source context
+- Added local athlete bootstrap:
+  - `POST /api/v1/athlete-bootstrap`
+  - creates/reuses a temporary local runner until auth/onboarding exists
 - Added manual activity logging:
   - `POST /api/v1/activity-logs`
   - supports planned-workout logs and unplanned manual runs
@@ -39,10 +42,14 @@ Completed:
   - skipped logs reduce the next planned quality workout
   - shortened logs use the same recovery-protection path
   - adaptations create plan revisions for explainability
+- Connected the mobile planner save flow to the API:
+  - creates/reuses the local runner
+  - saves the current goal, availability, and weekly distance
+  - displays the saved plan id and workout count
 
 Verified:
 
-- API tests pass: 15 tests, 66 assertions.
+- API tests pass: 16 tests, 70 assertions.
 - Mobile render test passes.
 - Mobile lint passes.
 - Xcode can list the generated iOS workspace and `RunningTrainerMobile` scheme.

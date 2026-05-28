@@ -26,6 +26,19 @@ type PreviewWorkout = {
   distance: string;
   intensity: string;
 };
+type BootstrapUserResponse = {
+  data: {
+    id: number;
+  };
+};
+type TrainingPlanResponse = {
+  data: {
+    id: number;
+    workouts: unknown[];
+  };
+};
+
+const apiBaseUrl = 'http://localhost:8010/api/v1';
 
 const weekdays: Weekday[] = [
   {iso: 1, short: 'M', label: 'Mon'},
@@ -55,6 +68,9 @@ function PlannerScreen() {
   const [weeklyKm, setWeeklyKm] = useState('24');
   const [selectedDays, setSelectedDays] = useState([2, 4, 6]);
   const [longRunDay, setLongRunDay] = useState(6);
+  const [isSavingPlan, setIsSavingPlan] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [savedPlanId, setSavedPlanId] = useState<number | null>(null);
 
   const preview = useMemo(
     () => buildPreview(raceDistance, Number(weeklyKm) || 0, selectedDays, longRunDay),
@@ -75,6 +91,42 @@ function PlannerScreen() {
 
       return [...current, day].sort((a, b) => a - b);
     });
+  }
+
+  async function savePlan() {
+    setIsSavingPlan(true);
+    setSaveMessage(null);
+
+    try {
+      const user = await requestJson<BootstrapUserResponse>('/athlete-bootstrap', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: 'Local Runner',
+          email: 'local-runner@running-trainer.test',
+        }),
+      });
+      const plan = await requestJson<TrainingPlanResponse>('/training-plans', {
+        method: 'POST',
+        body: JSON.stringify({
+          user_id: user.data.id,
+          race_distance: raceDistance,
+          start_date: todayDateString(),
+          race_date: raceDate,
+          available_weekdays: selectedDays,
+          long_run_weekday: longRunDay,
+          current_weekly_distance_km: Number(weeklyKm) || 0,
+          level: 'beginner',
+        }),
+      });
+
+      setSavedPlanId(plan.data.id);
+      setSaveMessage(`Saved plan ${plan.data.id} with ${plan.data.workouts.length} workouts.`);
+    } catch (error) {
+      setSavedPlanId(null);
+      setSaveMessage(error instanceof Error ? error.message : 'Could not save the plan.');
+    } finally {
+      setIsSavingPlan(false);
+    }
   }
 
   return (
@@ -209,6 +261,22 @@ function PlannerScreen() {
             </View>
           ))}
         </View>
+
+        <Pressable
+          accessibilityRole="button"
+          disabled={isSavingPlan}
+          onPress={savePlan}
+          style={[styles.primaryButton, isSavingPlan && styles.primaryButtonDisabled]}>
+          <Text style={styles.primaryButtonText}>
+            {isSavingPlan ? 'Saving...' : savedPlanId ? 'Save again' : 'Save plan'}
+          </Text>
+        </Pressable>
+
+        {saveMessage ? (
+          <Text style={[styles.saveMessage, savedPlanId ? styles.saveMessageSuccess : styles.saveMessageError]}>
+            {saveMessage}
+          </Text>
+        ) : null}
       </View>
 
       <View style={styles.logPanel}>
@@ -226,6 +294,28 @@ function PlannerScreen() {
       </View>
     </ScrollView>
   );
+}
+
+async function requestJson<T>(path: string, init: RequestInit): Promise<T> {
+  const response = await fetch(`${apiBaseUrl}${path}`, {
+    ...init,
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      ...(init.headers ?? {}),
+    },
+  });
+  const payload = await response.json();
+
+  if (!response.ok) {
+    throw new Error(payload.message ?? `Request failed with status ${response.status}.`);
+  }
+
+  return payload as T;
+}
+
+function todayDateString(): string {
+  return new Date().toISOString().slice(0, 10);
 }
 
 function SegmentButton({
@@ -495,6 +585,33 @@ const styles = StyleSheet.create({
     color: '#15211D',
     fontSize: 15,
     fontWeight: '800',
+  },
+  primaryButton: {
+    alignItems: 'center',
+    backgroundColor: '#1E5C4D',
+    borderRadius: 8,
+    minHeight: 48,
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
+  primaryButtonDisabled: {
+    backgroundColor: '#8BA39A',
+  },
+  primaryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  saveMessage: {
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 18,
+  },
+  saveMessageSuccess: {
+    color: '#1E5C4D',
+  },
+  saveMessageError: {
+    color: '#B33A2E',
   },
   logPanel: {
     backgroundColor: '#FFFFFF',
