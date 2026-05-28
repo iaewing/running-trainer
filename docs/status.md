@@ -26,10 +26,14 @@ Completed:
   - integration connection/export/import support tables
 - Added stored plan generation:
   - `POST /api/v1/training-plans`
+- Added manual activity logging:
+  - `POST /api/v1/activity-logs`
+  - supports planned-workout logs and unplanned manual runs
+  - updates linked workout status from completion status
 
 Verified:
 
-- API tests pass: 7 tests, 19 assertions.
+- API tests pass: 10 tests, 33 assertions.
 - Mobile render test passes.
 - Mobile lint passes.
 - Xcode can list the generated iOS workspace and `RunningTrainerMobile` scheme.
